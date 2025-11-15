@@ -51,6 +51,11 @@ class _ColorTimetableState extends State<ColorTimetable> {
   late CourseColorAllocator _allocator;
   double _dragDx = 0;
   late int _originalWeekIndex;
+  bool _sheetVisible = false;
+  TimetableCourse? _sheetAnchor;
+  List<TimetableCourse> _sheetConflicts = const [];
+  String _sheetTimeLabel = '';
+  late List<TimetableCourse> _courses;
 
   @override
   void initState() {
@@ -59,6 +64,7 @@ class _ColorTimetableState extends State<ColorTimetable> {
     _theme = widget.theme ?? const ColorTimetableTheme();
     _allocator = CourseColorAllocator(_theme.paletteIndex);
     _originalWeekIndex = _weeksFromStart(widget.startOfTerm, widget.referenceDate).clamp(0, _weekCount - 1);
+    _courses = List<TimetableCourse>.from(widget.courses);
   }
 
   @override
@@ -67,6 +73,9 @@ class _ColorTimetableState extends State<ColorTimetable> {
     if (oldWidget.theme != widget.theme) {
       _theme = widget.theme ?? const ColorTimetableTheme();
       _allocator = CourseColorAllocator(_theme.paletteIndex);
+    }
+    if (!identical(oldWidget.courses, widget.courses)) {
+      _courses = List<TimetableCourse>.from(widget.courses);
     }
   }
 
@@ -81,7 +90,7 @@ class _ColorTimetableState extends State<ColorTimetable> {
   }
 
   List<TimetableCourse> _coursesForWeek(int week) {
-    return widget.courses.where((c) => c.occursOnWeek(week)).toList();
+    return _courses.where((c) => c.occursOnWeek(week)).toList();
   }
 
   @override
@@ -125,11 +134,54 @@ class _ColorTimetableState extends State<ColorTimetable> {
                     labelColor: _theme.labelColor,
                     courseTextColor: _theme.courseTextColor,
                     showGridLines: widget.showGridLines,
-                    onTap: widget.onCourseTap == null
-                        ? null
-                        : (course) => widget.onCourseTap!(TimetableCourseTapDetails(course, week)),
+                    onTap: (course) {
+                      if (widget.showBuiltinCourseSheet) {
+                        _showCourseSheet(course, week, courses);
+                      } else {
+                        widget.onCourseTap?.call(TimetableCourseTapDetails(course, week));
+                      }
+                    },
                   ),
                 ),
+                // Built-in Course Action Sheet overlay & sheet
+                if (widget.showBuiltinCourseSheet) ...[
+                  IgnorePointer(
+                    ignoring: !_sheetVisible,
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 200),
+                      opacity: _sheetVisible ? 1.0 : 0.0,
+                      child: GestureDetector(
+                        onTap: _closeSheet,
+                        child: Container(
+                          color: Colors.black.withOpacity(0.5),
+                        ),
+                      ),
+                    ),
+                  ),
+                  IgnorePointer(
+                    ignoring: !_sheetVisible,
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 200),
+                      opacity: _sheetVisible ? 1.0 : 0.0,
+                      child: Align(
+                        alignment: Alignment.center,
+                        child: _CourseActionSheet(
+                          theme: _theme,
+                          allocator: _allocator,
+                          timeLabel: _sheetTimeLabel,
+                          courseList: _sheetConflicts,
+                          onClose: _closeSheet,
+                          onPromote: (course) {
+                        _promoteCourse(course);
+                      },
+                          onOpenDetail: (course) {
+                            widget.onCourseTap?.call(TimetableCourseTapDetails(course, week));
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
                 Positioned(
                   right: _controller.currentWeekIndex != _originalWeekIndex ? 0 : -200,
                   top: MediaQuery.of(context).size.height * 0.4,
@@ -281,7 +333,7 @@ class _ColorTimetableState extends State<ColorTimetable> {
 
   List<int> _buildWeekDensity(int week) {
     final arr = List<int>.filled(25, 0);
-    for (final c in widget.courses) {
+    for (final c in _courses) {
       if (!c.occursOnWeek(week)) continue;
       if (c.weekday > 5) continue;
       final base = (c.weekday - 1) * 5;
@@ -293,6 +345,156 @@ class _ColorTimetableState extends State<ColorTimetable> {
       }
     }
     return arr;
+  }
+
+  void _showCourseSheet(TimetableCourse course, int displayWeek, List<TimetableCourse> weekCourses) {
+    final conflicts = weekCourses.where((c) => c.weekday == course.weekday && c.startPeriod == course.startPeriod).toList();
+    final weekTitle = ['一', '二', '三', '四', '五', '六', '日'];
+    final timeLabel = '星期${weekTitle[course.weekday - 1]} 第${course.startPeriod}-${course.endPeriod}节';
+    setState(() {
+      _sheetAnchor = course;
+      _sheetConflicts = conflicts;
+      _sheetTimeLabel = timeLabel;
+      _sheetVisible = true;
+    });
+  }
+
+  void _closeSheet() {
+    if (!_sheetVisible) return;
+    setState(() {
+      _sheetVisible = false;
+      _sheetAnchor = null;
+      _sheetConflicts = const [];
+      _sheetTimeLabel = '';
+    });
+  }
+
+  void _promoteCourse(TimetableCourse target) {
+    final keyW = target.weekday;
+    final keyS = target.startPeriod;
+    final List<TimetableCourse> newList = [];
+    bool inserted = false;
+    bool removed = false;
+    for (final c in _courses) {
+      if (!removed && c == target) {
+        removed = true;
+        continue;
+      }
+      if (c.weekday == keyW && c.startPeriod == keyS && !inserted) {
+        newList.add(target);
+        inserted = true;
+      }
+      newList.add(c);
+    }
+    if (!inserted) {
+      newList.add(target);
+    }
+    setState(() {
+      _courses = newList;
+    });
+  }
+}
+
+class _CourseActionSheet extends StatelessWidget {
+  final ColorTimetableTheme theme;
+  final CourseColorAllocator allocator;
+  final String timeLabel;
+  final List<TimetableCourse> courseList;
+  final VoidCallback onClose;
+  final void Function(TimetableCourse) onPromote;
+  final void Function(TimetableCourse) onOpenDetail;
+
+  const _CourseActionSheet({
+    required this.theme,
+    required this.allocator,
+    required this.timeLabel,
+    required this.courseList,
+    required this.onClose,
+    required this.onPromote,
+    required this.onOpenDetail,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: 24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (int i = 0; i < courseList.length; i++)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: courseList[i].color ?? allocator.colorForTitle(courseList[i].title),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                    child: Stack(
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Center(
+                              child: Text(
+                                '课程名称:${courseList[i].title}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              '上课地点:${courseList[i].location ?? '无'}',
+                              style: const TextStyle(color: Colors.white, fontSize: 16),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              '教师:${courseList[i].teacher ?? '无'}',
+                              style: const TextStyle(color: Colors.white, fontSize: 16),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              '时间:${timeLabel}',
+                              style: const TextStyle(color: Colors.white, fontSize: 16),
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              '状态: 无',
+                              style: TextStyle(color: Colors.white, fontSize: 16),
+                            ),
+                          ],
+                        ),
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: InkWell(
+                            onTap: onClose,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.6),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Text('删除', style: TextStyle(color: Colors.white)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -370,8 +572,10 @@ class _TimetableGrid extends StatelessWidget {
                 ],
               ),
             ),
-            for (final course in _dedupe(courses))
-              Positioned(
+            ..._groupedBySlot(courses).map((group) {
+              final course = group.first;
+              final hasConflicts = group.length > 1;
+              return Positioned(
                 left: timeColWidth + (course.weekday - 1) * columnWidth + 4,
                 top: (course.startPeriod - 1) * rowHeight + 4,
                 width: columnWidth - 8,
@@ -381,26 +585,45 @@ class _TimetableGrid extends StatelessWidget {
                   child: Container(
                     decoration: BoxDecoration(
                       color: course.color ?? allocator.colorForTitle(course.title),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: Colors.white.withOpacity(0.5), width: 2),
                     ),
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          Text(course.title,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
-                          if (course.location != null)
-                            Text(course.location!,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(color: Colors.white, fontSize: 10)),
-                        ],
-                      ),
+                    child: Stack(
+                      children: [
+                        Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              Text(course.title,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                      color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+                              if (course.location != null)
+                                Text(course.location!,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(color: Colors.white, fontSize: 10)),
+                            ],
+                          ),
+                        ),
+                        if (hasConflicts)
+                          Positioned(
+                            top: 4,
+                            left: 4,
+                            right: 4,
+                            child: Container(
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.8),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ),
-              ),
+              );
+            }),
           ],
         );
       },
@@ -421,5 +644,15 @@ class _TimetableGrid extends StatelessWidget {
       }
     }
     return result;
+  }
+
+  List<List<TimetableCourse>> _groupedBySlot(List<TimetableCourse> list) {
+    final Map<String, List<TimetableCourse>> map = {};
+    for (final c in list) {
+      final key = '${c.weekday}:${c.startPeriod}';
+      map.putIfAbsent(key, () => []);
+      map[key]!.add(c);
+    }
+    return map.values.toList();
   }
 }

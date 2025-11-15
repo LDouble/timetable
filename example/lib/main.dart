@@ -57,6 +57,15 @@ class _DemoHomePageState extends State<DemoHomePage> {
           duration: 2,
           weeks: List<int>.generate(12, (i) => i + 1),
         ),
+    TimetableCourse(
+      title: '计算机网络2',
+      teacher: '王老师2',
+      location: '理科楼 A2012',
+      weekday: 1,
+      startPeriod: 1,
+      duration: 2,
+      weeks: List<int>.generate(12, (i) => i + 1),
+    ),
         TimetableCourse(
           title: '数据结构实验',
           teacher: '赵老师',
