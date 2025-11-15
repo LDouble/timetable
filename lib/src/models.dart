@@ -33,17 +33,32 @@ class TimetableCourseTapDetails {
   const TimetableCourseTapDetails(this.course, this.displayWeek);
 }
 
-const List<Map<String, String>> periodTimes = [
-  {'s': '08:00', 'e': '08:50'},
-  {'s': '08:55', 'e': '09:45'},
-  {'s': '10:15', 'e': '11:05'},
-  {'s': '11:10', 'e': '12:00'},
-  {'s': '14:00', 'e': '14:50'},
-  {'s': '14:55', 'e': '15:45'},
-  {'s': '16:15', 'e': '17:05'},
-  {'s': '17:10', 'e': '18:00'},
-  {'s': '19:00', 'e': '19:50'},
-  {'s': '19:55', 'e': '20:45'},
-  {'s': '21:00', 'e': '21:50'},
-  {'s': '21:55', 'e': '22:45'},
+class PeriodLabel {
+  final String s;
+  final String e;
+  const PeriodLabel(this.s, this.e);
+}
+
+class TimetableSchedule {
+  final List<PeriodLabel> periods;
+  final int densityBucketCount;
+  const TimetableSchedule({required this.periods, this.densityBucketCount = 5});
+  int get periodCount => periods.length;
+}
+
+const List<PeriodLabel> _defaultPeriodLabels = <PeriodLabel>[
+  PeriodLabel('08:00', '08:50'),
+  PeriodLabel('08:55', '09:45'),
+  PeriodLabel('10:15', '11:05'),
+  PeriodLabel('11:10', '12:00'),
+  PeriodLabel('14:00', '14:50'),
+  PeriodLabel('14:55', '15:45'),
+  PeriodLabel('16:15', '17:05'),
+  PeriodLabel('17:10', '18:00'),
+  PeriodLabel('19:00', '19:50'),
+  PeriodLabel('19:55', '20:45'),
+  PeriodLabel('21:00', '21:50'),
+  PeriodLabel('21:55', '22:45'),
 ];
+
+const TimetableSchedule defaultSchedule = TimetableSchedule(periods: _defaultPeriodLabels, densityBucketCount: 5);

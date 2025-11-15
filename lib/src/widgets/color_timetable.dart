@@ -17,6 +17,7 @@ class ColorTimetable extends StatefulWidget {
   final bool showBuiltinCourseSheet;
   final ColorTimetableTheme? theme;
   final TimetableController? controller;
+  final TimetableSchedule? schedule;
   final CourseTap? onCourseTap;
   final VoidCallback? onCreateCourse;
   final VoidCallback? onPaletteTap;
@@ -34,6 +35,7 @@ class ColorTimetable extends StatefulWidget {
     this.showBuiltinCourseSheet = true,
     this.theme,
     this.controller,
+    this.schedule,
     this.onCourseTap,
     this.onCreateCourse,
     this.onPaletteTap,
@@ -56,6 +58,7 @@ class _ColorTimetableState extends State<ColorTimetable> {
   List<TimetableCourse> _sheetConflicts = const [];
   String _sheetTimeLabel = '';
   late List<TimetableCourse> _courses;
+  late TimetableSchedule _schedule;
 
   @override
   void initState() {
@@ -65,6 +68,8 @@ class _ColorTimetableState extends State<ColorTimetable> {
     _allocator = CourseColorAllocator(_theme.paletteIndex);
     _originalWeekIndex = _weeksFromStart(widget.startOfTerm, widget.referenceDate).clamp(0, _weekCount - 1);
     _courses = List<TimetableCourse>.from(widget.courses);
+    _sortCourses();
+    _schedule = widget.schedule ?? defaultSchedule;
   }
 
   @override
@@ -76,11 +81,15 @@ class _ColorTimetableState extends State<ColorTimetable> {
     }
     if (!identical(oldWidget.courses, widget.courses)) {
       _courses = List<TimetableCourse>.from(widget.courses);
+      _sortCourses();
+    }
+    if (oldWidget.schedule != widget.schedule) {
+      _schedule = widget.schedule ?? defaultSchedule;
     }
   }
 
   int get _weekCount {
-    int maxWeek = 20;
+    int maxWeek = 25;
     for (final c in widget.courses) {
       for (final w in c.weeks) {
         if (w > maxWeek) maxWeek = w;
@@ -127,14 +136,15 @@ class _ColorTimetableState extends State<ColorTimetable> {
               children: [
                 Container(
                   color: bg,
-                  child: _TimetableGrid(
-                    courses: courses,
-                    allocator: _allocator,
-                    gridLineColor: _theme.gridLineColor,
-                    labelColor: _theme.labelColor,
-                    courseTextColor: _theme.courseTextColor,
-                    showGridLines: widget.showGridLines,
-                    onTap: (course) {
+                    child: _TimetableGrid(
+                      courses: courses,
+                      allocator: _allocator,
+                      gridLineColor: _theme.gridLineColor,
+                      labelColor: _theme.labelColor,
+                      courseTextColor: _theme.courseTextColor,
+                      showGridLines: widget.showGridLines,
+                      schedule: _schedule,
+                      onTap: (course) {
                       if (widget.showBuiltinCourseSheet) {
                         _showCourseSheet(course, week, courses);
                       } else {
@@ -307,7 +317,7 @@ class _ColorTimetableState extends State<ColorTimetable> {
                     height: 40,
                     child: GridView.count(
                       physics: const NeverScrollableScrollPhysics(),
-                      crossAxisCount: 5,
+                      crossAxisCount: _schedule.densityBucketCount,
                       children: [
                         for (final v in density)
                           Container(
@@ -332,15 +342,18 @@ class _ColorTimetableState extends State<ColorTimetable> {
   }
 
   List<int> _buildWeekDensity(int week) {
-    final arr = List<int>.filled(25, 0);
+    final int bucketCount = _schedule.densityBucketCount;
+    final int total = 5 * bucketCount;
+    final arr = List<int>.filled(total, 0);
     for (final c in _courses) {
       if (!c.occursOnWeek(week)) continue;
       if (c.weekday > 5) continue;
-      final base = (c.weekday - 1) * 5;
-      final bucket = max(0, min(4, (c.startPeriod - 1) ~/ 2));
+      final int base = (c.weekday - 1) * bucketCount;
+      final int bucket = max(0, min(bucketCount - 1, ((c.startPeriod - 1) * bucketCount ~/ _schedule.periodCount)));
       arr[base + bucket]++;
-      if (c.duration > 2) {
-        final bucket2 = min(4, bucket + 1);
+      final int spanBuckets = ((c.duration * bucketCount) / _schedule.periodCount).ceil();
+      if (spanBuckets > 1) {
+        final int bucket2 = min(bucketCount - 1, bucket + 1);
         arr[base + bucket2]++;
       }
     }
@@ -391,7 +404,14 @@ class _ColorTimetableState extends State<ColorTimetable> {
     }
     setState(() {
       _courses = newList;
+      _sortCourses();
     });
+  }
+
+  void _sortCourses() {
+    _courses.sort((a, b) => a.weekday - b.weekday != 0
+        ? a.weekday - b.weekday
+        : a.startPeriod - b.startPeriod);
   }
 }
 
@@ -506,6 +526,7 @@ class _TimetableGrid extends StatelessWidget {
   final Color courseTextColor;
   final void Function(TimetableCourse)? onTap;
   final bool showGridLines;
+  final TimetableSchedule schedule;
 
   const _TimetableGrid({
     required this.courses,
@@ -514,6 +535,7 @@ class _TimetableGrid extends StatelessWidget {
     required this.labelColor,
     required this.courseTextColor,
     required this.showGridLines,
+    required this.schedule,
     this.onTap,
   });
 
@@ -525,7 +547,7 @@ class _TimetableGrid extends StatelessWidget {
         final height = constraints.maxHeight;
         final timeColWidth = width * _timeColumnFraction;
         final columnWidth = (width - timeColWidth) / 7;
-        final rowCount = periodTimes.length;
+        final rowCount = schedule.periodCount;
         final rowHeight = height / rowCount;
         return Stack(
           children: [
@@ -554,7 +576,7 @@ class _TimetableGrid extends StatelessWidget {
               bottom: 0,
               child: Column(
                 children: [
-                  for (int i = 0; i < periodTimes.length; i++)
+                  for (int i = 0; i < schedule.periodCount; i++)
                     Expanded(
                       child: FittedBox(
                         fit: BoxFit.scaleDown,
@@ -562,7 +584,7 @@ class _TimetableGrid extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text('${i + 1}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-                            Text('${periodTimes[i]['s']}\n${periodTimes[i]['e']}',
+                            Text('${schedule.periods[i].s}\n${schedule.periods[i].e}',
                                 textAlign: TextAlign.center,
                                 style: const TextStyle(fontSize: 9)),
                           ],
