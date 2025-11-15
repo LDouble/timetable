@@ -1,39 +1,75 @@
-<!--
-This README describes the package. If you publish this package to pub.dev,
-this README's contents appear on the landing page for your package.
+# Timetable
 
-For information about how to write a good package README, see the guide for
-[writing package pages](https://dart.dev/tools/pub/writing-package-pages).
+将 ColorTimetable 的 Vue 课程表组件迁移为 Flutter Package 的实现，提供与原版一致的视觉与交互，并支持 Android/iOS/Web。
 
-For general information about developing packages, see the Dart guide for
-[creating packages](https://dart.dev/guides/libraries/create-packages)
-and the Flutter guide for
-[developing packages and plugins](https://flutter.dev/to/develop-packages).
--->
+## 功能特性
 
-TODO: Put a short description of the package here that helps potential users
-know whether this package might be useful for them.
+- 课程表网格布局：按星期×节次渲染课程块，支持冲突去重显示
+- 周切换与周概览密度图：横向选择 1..N 周，并显示 5×5 点阵密度
+- 课程点击回调：返回课程与当前周信息
+- 主题与配色：内置两套色板与暗/亮主题，支持自定义
+- 响应式适配：自动根据屏幕尺寸调整列宽与行高
 
-## Features
+## 安装
 
-TODO: List what your package can do. Maybe include images, gifs, or videos.
+在项目的 `pubspec.yaml` 中加入依赖：
 
-## Getting started
-
-TODO: List prerequisites and provide or point to information on how to
-start using the package.
-
-## Usage
-
-TODO: Include short and useful examples for package users. Add longer examples
-to `/example` folder.
-
-```dart
-const like = 'sample';
+```
+dependencies:
+  timetable:
+    path: ../
 ```
 
-## Additional information
+或发布后使用 `flutter pub add timetable`。
 
-TODO: Tell users more about the package: where to find more information, how to
-contribute to the package, how to file issues, what response they can expect
-from the package authors, and more.
+## 快速上手
+
+```dart
+MaterialApp(
+  home: Scaffold(
+    body: ColorTimetable(
+      courses: [
+        TimetableCourse(
+          title: '算法设计',
+          weekday: 1,
+          startPeriod: 1,
+          duration: 2,
+          weeks: [1, 2, 3],
+        ),
+      ],
+      startOfTerm: DateTime(2024, 9, 2),
+      initialWeekIndex: 0,
+      referenceDate: DateTime(2024, 9, 2),
+      showWeekSelector: true,
+      showBuiltinCourseSheet: false,
+      onCourseTap: (d) {
+        debugPrint('选择: ${d.course.title} 第${d.displayWeek}周');
+      },
+    ),
+  ),
+);
+```
+
+## API 概览
+
+- `TimetableCourse`：课程模型，`title/teacher/location/weekday/startPeriod/duration/weeks/color`，`endPeriod/occursOnWeek`
+- `ColorTimetableTheme`：主题配置，`light/dark` 构造与调色板选择
+- `TimetableController`：可选控制器，`currentWeekIndex/zoom` 与 `setWeekIndex/setZoom`
+- `ColorTimetable`：主组件
+  - `courses`、`startOfTerm`、`initialWeekIndex`、`referenceDate`
+  - `showWeekSelector`、`showBuiltinCourseSheet`
+  - `theme`、`controller`
+  - 回调：`onCourseTap(TimetableCourseTapDetails)`、`onCreateCourse`、`onPaletteTap`
+
+## 示例与文档
+
+- 示例项目位于 `example/` 目录，包含深浅主题切换与多课程场景
+- 更多使用示例与参数说明可参考示例源码
+
+## 测试
+
+- 运行 `flutter test` 执行单元与组件测试
+
+## 兼容性
+
+- 支持 Flutter 最新稳定版，兼容 Android/iOS/Web

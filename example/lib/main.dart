@@ -139,7 +139,6 @@ class _DemoHomePageState extends State<DemoHomePage> {
             );
           },
           onPaletteTap: () => widget.onThemeChanged(!widget.useDarkTheme),
-          onWeekChanged: (index) => setState(() => _currentWeekIndex = index),
           onCourseTap: (details) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
