@@ -142,6 +142,7 @@ class _DemoHomePageState extends State<DemoHomePage> {
           theme: timetableTheme,
           showBuiltinCourseSheet: true,
           initialShowWeekSelector: true,
+          showNonCurrentWeekCourses: true,
           onCreateCourse: () {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('点击添加课程（示例）')),

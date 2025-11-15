@@ -23,6 +23,7 @@ class ColorTimetable extends StatefulWidget {
   final VoidCallback? onPaletteTap;
   final ValueChanged<int>? onWeekChanged;
   final bool showGridLines;
+  final bool showNonCurrentWeekCourses;
 
   const ColorTimetable({
     super.key,
@@ -41,6 +42,7 @@ class ColorTimetable extends StatefulWidget {
     this.onPaletteTap,
     this.onWeekChanged,
     this.showGridLines = false,
+    this.showNonCurrentWeekCourses = false,
   }) : showWeekSelector = initialShowWeekSelector ?? showWeekSelector;
 
   @override
@@ -106,7 +108,7 @@ class _ColorTimetableState extends State<ColorTimetable> {
   Widget build(BuildContext context) {
     final bg = _theme.backgroundColor;
     final week = _controller.currentWeekIndex + 1;
-    final courses = _coursesForWeek(week);
+    final courses = widget.showNonCurrentWeekCourses ? _courses : _coursesForWeek(week);
     return Column(
       children: [
         if (widget.showWeekSelector) _buildWeekSelector(),
@@ -136,15 +138,17 @@ class _ColorTimetableState extends State<ColorTimetable> {
               children: [
                 Container(
                   color: bg,
-                    child: _TimetableGrid(
-                      courses: courses,
-                      allocator: _allocator,
-                      gridLineColor: _theme.gridLineColor,
-                      labelColor: _theme.labelColor,
-                      courseTextColor: _theme.courseTextColor,
-                      showGridLines: widget.showGridLines,
-                      schedule: _schedule,
-                      onTap: (course) {
+                  child: _TimetableGrid(
+                    courses: courses,
+                    allocator: _allocator,
+                    gridLineColor: _theme.gridLineColor,
+                    labelColor: _theme.labelColor,
+                    courseTextColor: _theme.courseTextColor,
+                    showGridLines: widget.showGridLines,
+                    schedule: _schedule,
+                    currentWeek: week,
+                    showInactiveGrey: widget.showNonCurrentWeekCourses,
+                    onTap: (course) {
                       if (widget.showBuiltinCourseSheet) {
                         _showCourseSheet(course, week, courses);
                       } else {
@@ -527,6 +531,8 @@ class _TimetableGrid extends StatelessWidget {
   final void Function(TimetableCourse)? onTap;
   final bool showGridLines;
   final TimetableSchedule schedule;
+  final int currentWeek;
+  final bool showInactiveGrey;
 
   const _TimetableGrid({
     required this.courses,
@@ -536,6 +542,8 @@ class _TimetableGrid extends StatelessWidget {
     required this.courseTextColor,
     required this.showGridLines,
     required this.schedule,
+    required this.currentWeek,
+    required this.showInactiveGrey,
     this.onTap,
   });
 
@@ -595,8 +603,12 @@ class _TimetableGrid extends StatelessWidget {
               ),
             ),
             ..._groupedBySlot(courses).map((group) {
-              final course = group.first;
-              final hasConflicts = group.length > 1;
+              final TimetableCourse course = group.firstWhere(
+                (c) => c.occursOnWeek(currentWeek),
+                orElse: () => group.first,
+              );
+              final bool active = course.occursOnWeek(currentWeek);
+              final bool hasConflicts = group.length > 1;
               return Positioned(
                 left: timeColWidth + (course.weekday - 1) * columnWidth + 4,
                 top: (course.startPeriod - 1) * rowHeight + 4,
@@ -606,7 +618,9 @@ class _TimetableGrid extends StatelessWidget {
                   onTap: onTap == null ? null : () => onTap!(course),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: course.color ?? allocator.colorForTitle(course.title),
+                      color: active
+                          ? (course.color ?? allocator.colorForTitle(course.title))
+                          : (showInactiveGrey ? const Color(0xFFB0B0B0) : (course.color ?? allocator.colorForTitle(course.title))),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: Colors.white.withOpacity(0.5), width: 2),
                     ),
@@ -619,11 +633,14 @@ class _TimetableGrid extends StatelessWidget {
                               Text(course.title,
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
-                                      color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+                                      color: Colors.white.withOpacity(active ? 1.0 : 0.9),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600)),
                               if (course.location != null)
                                 Text(course.location!,
                                     textAlign: TextAlign.center,
-                                    style: const TextStyle(color: Colors.white, fontSize: 10)),
+                                    style: TextStyle(
+                                        color: Colors.white.withOpacity(active ? 1.0 : 0.9), fontSize: 10)),
                             ],
                           ),
                         ),
