@@ -15,15 +15,18 @@ class ColorTimetableTheme {
     this.timelineTextColor = const Color(0xFF1F2430),
     this.headerTextColor = const Color(0xFF1C1F27),
     this.secondaryTextColor = const Color(0xFF6B7280),
-    this.accentColor = const Color(0xFF12A595),
+    this.accentColor = const Color(0xFF5F8BFF),
+    this.topBarColor = const Color(0xFF5F8BFF),
+    this.topBarForegroundColor = Colors.white,
+    this.topBarIconColor = Colors.white,
     this.gridLineColor = const Color(0xFFE0E6F1),
     this.returnButtonTextColor = Colors.white,
     this.conflictIndicatorColor = const Color(0xCCFFFFFF),
-    this.slotHeight = 88,
-    this.timeColumnWidth = 72,
-    this.rowSpacing = 8,
-    this.columnSpacing = 8,
-    this.weekSelectorHeight = 96,
+    this.slotHeight = 78,
+    this.timeColumnWidth = 68,
+    this.rowSpacing = 6,
+    this.columnSpacing = 6,
+    this.weekSelectorHeight = 100,
     this.gridPadding = const EdgeInsets.symmetric(horizontal: 12, vertical: 18),
     this.cardRadius = const BorderRadius.all(Radius.circular(16)),
     this.cardElevation = 10,
@@ -43,13 +46,15 @@ class ColorTimetableTheme {
       Color(0xFF81CC74),
     ],
     this.courseTitleStyle = const TextStyle(
-      fontSize: 14,
+      fontSize: 13,
       fontWeight: FontWeight.w600,
       color: Colors.white,
+      height: 1.2,
     ),
     this.courseMetaStyle = const TextStyle(
-      fontSize: 11,
+      fontSize: 10,
       color: Colors.white,
+      height: 1.1,
     ),
     this.weekdayStyle = const TextStyle(
       fontSize: 12,
@@ -80,6 +85,9 @@ class ColorTimetableTheme {
           headerTextColor: Colors.white,
           secondaryTextColor: const Color(0xFFADB3C8),
           accentColor: const Color(0xFF4D7CFF),
+          topBarColor: const Color(0xFF1F2536),
+          topBarForegroundColor: Colors.white,
+          topBarIconColor: Colors.white,
           gridLineColor: const Color(0xFF2E3346),
           returnButtonTextColor: Colors.white,
           conflictIndicatorColor: const Color(0xCCFFFFFF),
@@ -107,6 +115,9 @@ class ColorTimetableTheme {
   final Color headerTextColor;
   final Color secondaryTextColor;
   final Color accentColor;
+  final Color topBarColor;
+  final Color topBarForegroundColor;
+  final Color topBarIconColor;
   final Color gridLineColor;
   final Color returnButtonTextColor;
   final Color conflictIndicatorColor;
@@ -141,6 +152,9 @@ class ColorTimetableTheme {
     Color? headerTextColor,
     Color? secondaryTextColor,
     Color? accentColor,
+    Color? topBarColor,
+    Color? topBarForegroundColor,
+    Color? topBarIconColor,
     Color? gridLineColor,
     Color? returnButtonTextColor,
     Color? conflictIndicatorColor,
@@ -174,6 +188,9 @@ class ColorTimetableTheme {
       headerTextColor: headerTextColor ?? this.headerTextColor,
       secondaryTextColor: secondaryTextColor ?? this.secondaryTextColor,
       accentColor: accentColor ?? this.accentColor,
+      topBarColor: topBarColor ?? this.topBarColor,
+      topBarForegroundColor: topBarForegroundColor ?? this.topBarForegroundColor,
+      topBarIconColor: topBarIconColor ?? this.topBarIconColor,
       gridLineColor: gridLineColor ?? this.gridLineColor,
       returnButtonTextColor: returnButtonTextColor ?? this.returnButtonTextColor,
       conflictIndicatorColor: conflictIndicatorColor ?? this.conflictIndicatorColor,

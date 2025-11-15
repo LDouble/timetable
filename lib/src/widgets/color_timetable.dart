@@ -28,6 +28,10 @@ class ColorTimetable extends StatefulWidget {
     this.showBuiltinCourseSheet = true,
     this.returnToCurrentWeekLabel = '返回本周',
     this.scrollPhysics,
+    this.initialShowWeekSelector = false,
+    this.onCreateCourse,
+    this.onPaletteTap,
+    this.onMoreTap,
   })  : assert(weekCount > 0, 'weekCount must be greater than zero'),
         assert(timeSlots.length > 1, 'timeSlots should cover at least two entries'),
         assert(weekdayLabels.length == 7, 'weekdayLabels必须包含7个元素');
@@ -48,6 +52,10 @@ class ColorTimetable extends StatefulWidget {
   final bool showBuiltinCourseSheet;
   final String returnToCurrentWeekLabel;
   final ScrollPhysics? scrollPhysics;
+  final bool initialShowWeekSelector;
+  final VoidCallback? onCreateCourse;
+  final VoidCallback? onPaletteTap;
+  final VoidCallback? onMoreTap;
 
   @override
   State<ColorTimetable> createState() => _ColorTimetableState();
@@ -58,6 +66,7 @@ class _ColorTimetableState extends State<ColorTimetable> {
   late int _originalWeekIndex;
   late int _originalWeekdayIndex;
   bool _hasSemesterStarted = false;
+  bool _showWeekPanel = false;
 
   Map<String, Color> _colorCache = <String, Color>{};
   List<GlobalKey> _weekItemKeys = <GlobalKey>[];
@@ -68,7 +77,85 @@ class _ColorTimetableState extends State<ColorTimetable> {
     _syncWeekKeys();
     _initializeWeekInformation();
     _resetColorCache();
+    _showWeekPanel = widget.initialShowWeekSelector;
     WidgetsBinding.instance.addPostFrameCallback((_) => _ensureCurrentWeekVisible());
+  }
+
+  Widget _buildTopBar(BuildContext context) {
+    final theme = widget.theme;
+    final padding = MediaQuery.of(context).padding;
+    return Container(
+      padding: EdgeInsets.only(top: padding.top + 2, left: 16, right: 16, bottom: 12),
+      decoration: BoxDecoration(
+        color: theme.topBarColor,
+        boxShadow: const [
+          BoxShadow(color: Color(0x22000000), blurRadius: 20, offset: Offset(0, 4)),
+        ],
+      ),
+      child: SizedBox(
+        height: 46,
+        child: Row(
+          children: [
+            SizedBox(
+              width: 56,
+              child: _TopBarIconButton(
+                icon: Icons.add_rounded,
+                color: theme.topBarIconColor,
+                onTap: widget.onCreateCourse,
+              ),
+            ),
+            Expanded(
+              child: GestureDetector(
+                onTap: widget.showWeekSelector ? _toggleWeekPanel : null,
+                behavior: HitTestBehavior.opaque,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '第${_currentWeekIndex + 1}周${_hasSemesterStarted ? '' : ' (未开学)'}',
+                      style: TextStyle(
+                        color: theme.topBarForegroundColor,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    AnimatedRotation(
+                      turns: _showWeekPanel ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 200),
+                      child: Icon(
+                        Icons.keyboard_arrow_up_rounded,
+                        color: theme.topBarForegroundColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(
+              width: 90,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  _TopBarIconButton(
+                    icon: Icons.color_lens_outlined,
+                    color: theme.topBarIconColor,
+                    onTap: widget.onPaletteTap,
+                  ),
+                  const SizedBox(width: 4),
+                  _TopBarIconButton(
+                    icon: Icons.more_horiz,
+                    color: theme.topBarIconColor,
+                    onTap: widget.onMoreTap,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -85,6 +172,9 @@ class _ColorTimetableState extends State<ColorTimetable> {
     if (!listEquals(oldWidget.courses, widget.courses) || oldWidget.theme.courseColors != widget.theme.courseColors) {
       _resetColorCache();
     }
+    if (oldWidget.initialShowWeekSelector != widget.initialShowWeekSelector) {
+      _showWeekPanel = widget.initialShowWeekSelector;
+    }
   }
 
   @override
@@ -94,39 +184,21 @@ class _ColorTimetableState extends State<ColorTimetable> {
     final weekHeatmap = _buildWeekHeatmap();
     final groupedCourses = _buildCourseGroups();
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final mediaQuery = MediaQuery.of(context);
-        final scrollChild = SingleChildScrollView(
-          physics: widget.scrollPhysics,
-          child: Padding(
-            padding: EdgeInsets.only(bottom: mediaQuery.padding.bottom + 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+    return ColoredBox(
+      color: theme.backgroundColor,
+      child: Column(
+        children: [
+          _buildTopBar(context),
+          Expanded(
+            child: Stack(
               children: [
-                if (widget.showWeekSelector) _buildWeekSelector(weekHeatmap),
-                const SizedBox(height: 12),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: _buildHeader(),
-                ),
-                const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: _buildGridSurface(height, groupedCourses),
-                ),
+                _buildTimetableBody(context, theme, height, weekHeatmap, groupedCourses),
+                if (widget.showReturnToCurrentWeekButton) _buildReturnButtonOverlay(),
               ],
             ),
           ),
-        );
-
-        return Stack(
-          children: [
-            Container(color: theme.backgroundColor, child: scrollChild),
-            if (widget.showReturnToCurrentWeekButton) _buildReturnButton(mediaQuery.size.height),
-          ],
-        );
-      },
+        ],
+      ),
     );
   }
 
@@ -168,6 +240,11 @@ class _ColorTimetableState extends State<ColorTimetable> {
   }
 
   int _clampWeekIndex(int value) => value.clamp(0, widget.weekCount - 1);
+
+  void _toggleWeekPanel() {
+    if (!widget.showWeekSelector) return;
+    setState(() => _showWeekPanel = !_showWeekPanel);
+  }
 
   DateTime _normalizeDate(DateTime date) => DateTime(date.year, date.month, date.day);
 
@@ -228,81 +305,82 @@ class _ColorTimetableState extends State<ColorTimetable> {
 
   Widget _buildWeekSelector(List<List<List<int>>> heatmap) {
     final theme = widget.theme;
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 240),
-      curve: Curves.easeOutCubic,
-      child: SizedBox(
-        height: theme.weekSelectorHeight,
-        child: ListView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          scrollDirection: Axis.horizontal,
-          itemCount: widget.weekCount,
-          itemBuilder: (context, index) {
-            final bool isCurrent = index == _currentWeekIndex;
-            final bool isOriginal = index == _originalWeekIndex;
-            final Color cardColor = isCurrent
-                ? theme.weekSelectorHighlightColor.withOpacity(0.15)
-                : theme.weekSelectorBackground;
-            final Color borderColor = isCurrent ? theme.weekSelectorHighlightColor : Colors.transparent;
-            final Color titleColor = isCurrent
-                ? theme.weekSelectorHighlightColor
-                : isOriginal
-                    ? theme.weekSelectorOriginalWeekColor
-                    : theme.weekSelectorInactiveColor;
-            final List<int> dots = <int>[];
-            for (int day = 0; day < 5; day++) {
-              dots.addAll(heatmap[index][day]);
-            }
+    return SizedBox(
+      height: theme.weekSelectorHeight,
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        scrollDirection: Axis.horizontal,
+        itemCount: widget.weekCount,
+        itemBuilder: (context, index) {
+          final bool isCurrent = index == _currentWeekIndex;
+          final bool isOriginal = index == _originalWeekIndex;
+          final Color cardColor = isCurrent
+              ? theme.weekSelectorHighlightColor.withValues(alpha: 0.18)
+              : theme.weekSelectorBackground;
+          final Color borderColor = isCurrent ? theme.weekSelectorHighlightColor : Colors.transparent;
+          final Color titleColor = isCurrent
+              ? Colors.white
+              : isOriginal
+                  ? theme.weekSelectorOriginalWeekColor
+                  : theme.weekSelectorInactiveColor;
+          final List<int> dots = <int>[];
+          for (int day = 0; day < 5; day++) {
+            dots.addAll(heatmap[index][day]);
+          }
 
-            return Container(
-              key: _weekItemKeys[index],
-              width: 110,
-              margin: const EdgeInsets.only(right: 8),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(18),
-                  onTap: () => _changeWeek(index),
-                  child: Ink(
-                    decoration: BoxDecoration(
-                      color: cardColor,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: borderColor, width: 1.2),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('第${index + 1}周', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: titleColor)),
-                        const SizedBox(height: 8),
-                        Expanded(
-                          child: GridView.builder(
-                            physics: const NeverScrollableScrollPhysics(),
-                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 5,
-                              mainAxisSpacing: 3,
-                              crossAxisSpacing: 3,
-                            ),
-                            itemCount: dots.length,
-                            itemBuilder: (context, dotIndex) {
-                              final bool active = dots[dotIndex] > 0;
-                              return DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: active ? theme.weekSelectorHighlightColor : theme.weekSelectorInactiveColor.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                              );
-                            },
+          return Container(
+            key: _weekItemKeys[index],
+            width: 120,
+            margin: const EdgeInsets.only(right: 10),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () => _changeWeek(index),
+                child: Ink(
+                  decoration: BoxDecoration(
+                    color: cardColor,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: borderColor, width: 1.3),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '第${index + 1}周',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: titleColor),
+                      ),
+                      const SizedBox(height: 8),
+                      Expanded(
+                        child: GridView.builder(
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 5,
+                            mainAxisSpacing: 3,
+                            crossAxisSpacing: 3,
                           ),
+                          itemCount: dots.length,
+                          itemBuilder: (context, dotIndex) {
+                            final bool active = dots[dotIndex] > 0;
+                            return DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: active
+                                    ? theme.weekSelectorHighlightColor
+                                    : theme.weekSelectorInactiveColor.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            );
+                          },
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-            );
-          },
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -311,59 +389,194 @@ class _ColorTimetableState extends State<ColorTimetable> {
     final theme = widget.theme;
     final List<int> dates = _weekDatesFor(_currentWeekIndex);
     final int month = _weekBaseDate(_currentWeekIndex).month;
+    final double gap = theme.columnSpacing;
     return Container(
       decoration: BoxDecoration(
         color: theme.headerColor,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(26),
         boxShadow: [
-          BoxShadow(color: theme.headerShadowColor, blurRadius: 24, offset: const Offset(0, 12)),
+          BoxShadow(color: theme.headerShadowColor, blurRadius: 30, offset: const Offset(0, 18)),
         ],
       ),
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-      child: Row(
-        children: [
-          SizedBox(
-            width: widget.theme.timeColumnWidth,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text('$month月', style: theme.weekdayStyle.copyWith(fontSize: 16, color: theme.headerTextColor)),
-                const SizedBox(height: 2),
-                Text('Week ${_currentWeekIndex + 1}', style: TextStyle(color: theme.secondaryTextColor, fontSize: 11)),
-              ],
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final double availableWidth = constraints.maxWidth - gap * 7;
+          final double unit = availableWidth / (7 + 0.7);
+          final double timeWidth = unit * 0.7;
+          final double dayWidth = unit;
+          return Row(
+            children: [
+              SizedBox(
+                width: timeWidth,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('$month月', style: theme.weekdayStyle.copyWith(fontSize: 18, color: theme.headerTextColor)),
+                    const SizedBox(height: 6),
+                    Text('Week ${_currentWeekIndex + 1}', style: TextStyle(color: theme.secondaryTextColor, fontSize: 12)),
+                  ],
+                ),
+              ),
+              SizedBox(width: gap),
+              Expanded(
+                child: Row(
+                  children: List.generate(7, (index) {
+                    final bool highlight = widget.highlightToday &&
+                        _hasSemesterStarted &&
+                        _currentWeekIndex == _originalWeekIndex &&
+                        index == _originalWeekdayIndex;
+                    return Padding(
+                      padding: EdgeInsets.only(right: index == 6 ? 0 : gap),
+                      child: SizedBox(
+                        width: dayWidth,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('周${widget.weekdayLabels[index]}', style: theme.weekdayStyle.copyWith(color: theme.headerTextColor)),
+                            const SizedBox(height: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              decoration: BoxDecoration(
+                                color: highlight ? theme.weekSelectorHighlightColor : Colors.transparent,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: highlight ? theme.weekSelectorHighlightColor : theme.gridLineColor.withValues(alpha: 0.4),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Text(
+                                '${dates[index]}',
+                                style: theme.timelineTimeStyle.copyWith(
+                                  color: highlight ? Colors.white : theme.secondaryTextColor,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildTimetableBody(
+    BuildContext context,
+    ColorTimetableTheme theme,
+    double totalHeight,
+    List<List<List<int>>> heatmap,
+    List<_CourseGroup> groups,
+  ) {
+    final double headerBaseHeight = 128;
+    final double weekPanelHeight =
+        widget.showWeekSelector && _showWeekPanel ? theme.weekSelectorHeight + 16 : 0;
+    final double headerHeight = headerBaseHeight + weekPanelHeight;
+    final mediaQuery = MediaQuery.of(context);
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: SingleChildScrollView(
+            physics: widget.scrollPhysics ?? const BouncingScrollPhysics(),
+            padding: EdgeInsets.only(
+              top: headerHeight + 12,
+              bottom: mediaQuery.padding.bottom + 24,
+            ),
+            child: Padding(
+              padding: theme.gridPadding,
+              child: _buildGridSurface(totalHeight, groups),
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: List.generate(7, (index) {
-                final bool highlight = widget.highlightToday && _hasSemesterStarted && _currentWeekIndex == _originalWeekIndex && index == _originalWeekdayIndex;
-                return Expanded(
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 240),
-                    margin: EdgeInsets.symmetric(horizontal: index == 0 || index == 6 ? 2 : 4),
-                    padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-                    decoration: BoxDecoration(
-                      color: highlight ? theme.weekSelectorHighlightColor.withOpacity(0.12) : Colors.transparent,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: highlight ? theme.weekSelectorHighlightColor : Colors.transparent,
-                        width: 1.2,
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        Text('周${widget.weekdayLabels[index]}', style: theme.weekdayStyle.copyWith(color: theme.headerTextColor)),
-                        Text('${dates[index]}', style: theme.timelineTimeStyle.copyWith(color: theme.secondaryTextColor)),
-                      ],
-                    ),
-                  ),
-                );
-              }),
+        ),
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: _buildPinnedHeader(heatmap),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPinnedHeader(List<List<List<int>>> heatmap) {
+    final theme = widget.theme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.backgroundColor,
+        boxShadow: [
+          BoxShadow(color: theme.headerShadowColor, blurRadius: 20, offset: const Offset(0, 6)),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.showWeekSelector)
+            AnimatedCrossFade(
+              crossFadeState: _showWeekPanel ? CrossFadeState.showFirst : CrossFadeState.showSecond,
+              duration: const Duration(milliseconds: 250),
+              firstCurve: Curves.easeOutCubic,
+              secondCurve: Curves.easeOutCubic,
+              sizeCurve: Curves.easeOutCubic,
+              firstChild: Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: _buildWeekSelector(heatmap),
+              ),
+              secondChild: const SizedBox(height: 0),
             ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: _buildHeader(),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildReturnButtonOverlay() {
+    final bool show = widget.showReturnToCurrentWeekButton && _currentWeekIndex != _originalWeekIndex;
+    return Positioned.fill(
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: Padding(
+          padding: const EdgeInsets.only(right: 12),
+          child: AnimatedSlide(
+            offset: show ? Offset.zero : const Offset(1.3, 0),
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeOutCubic,
+            child: AnimatedOpacity(
+              opacity: show ? 1 : 0,
+              duration: const Duration(milliseconds: 200),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: const BorderRadius.horizontal(left: Radius.circular(32)),
+                  onTap: () => _changeWeek(_originalWeekIndex),
+                  child: Ink(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: widget.theme.accentColor,
+                      borderRadius: const BorderRadius.horizontal(left: Radius.circular(32)),
+                    ),
+                    child: Text(
+                      widget.returnToCurrentWeekLabel,
+                      style: TextStyle(
+                        color: widget.theme.returnButtonTextColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -376,69 +589,71 @@ class _ColorTimetableState extends State<ColorTimetable> {
       groupedByDay.putIfAbsent(group.primary.weekday - 1, () => <_CourseGroup>[]).add(group);
     }
 
+    final double gap = theme.columnSpacing;
     return Container(
       decoration: BoxDecoration(
         color: theme.surfaceColor,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [BoxShadow(color: theme.headerShadowColor, blurRadius: 40, offset: const Offset(0, 24))],
+        borderRadius: BorderRadius.circular(32),
+        boxShadow: [BoxShadow(color: theme.headerShadowColor, blurRadius: 35, offset: const Offset(0, 20))],
       ),
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: theme.timeColumnWidth,
-            child: Column(
-              children: List.generate(widget.timeSlots.length, (index) {
-                final slot = widget.timeSlots[index];
-                return Container(
-                  height: theme.slotHeight,
-                  margin: EdgeInsets.only(bottom: index == widget.timeSlots.length - 1 ? 0 : theme.rowSpacing),
-                  decoration: BoxDecoration(
-                    color: theme.timeColumnColor,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text('${slot.index}', style: theme.timelineIndexStyle.copyWith(color: theme.timelineTextColor)),
-                      const SizedBox(height: 4),
-                      Text('${slot.startLabel}\n${slot.endLabel}',
-                          textAlign: TextAlign.center,
-                          style: theme.timelineTimeStyle.copyWith(color: theme.secondaryTextColor, height: 1.2)),
-                    ],
-                  ),
-                );
-              }),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: SizedBox(
-              height: totalHeight,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: List<Widget>.generate(7, (day) {
-                  final List<_CourseGroup> columnGroups = groupedByDay[day] ?? <_CourseGroup>[];
-                  return Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.only(right: day == 6 ? 0 : widget.theme.columnSpacing),
-                      child: _DayColumn(
-                        slotCount: rowCount,
-                        groups: columnGroups,
-                        slotHeight: theme.slotHeight,
-                        rowSpacing: theme.rowSpacing,
-                        theme: theme,
-                        onCourseTap: _handleCourseTap,
-                      ),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final double availableWidth = constraints.maxWidth - gap * 7;
+          final double unit = availableWidth / (7 + 0.7);
+          final double timeWidth = unit * 0.7;
+          final double dayWidth = unit;
+
+          final List<Widget> rowChildren = <Widget>[
+            SizedBox(
+              width: timeWidth,
+              child: Column(
+                children: List.generate(widget.timeSlots.length, (index) {
+                  final slot = widget.timeSlots[index];
+                  return Container(
+                    height: theme.slotHeight,
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text('${slot.index}', style: theme.timelineIndexStyle.copyWith(color: theme.timelineTextColor)),
+                        const SizedBox(height: 6),
+                        Text('${slot.startLabel}\n${slot.endLabel}',
+                            textAlign: TextAlign.center,
+                            style: theme.timelineTimeStyle.copyWith(color: theme.secondaryTextColor, height: 1.2)),
+                      ],
                     ),
                   );
                 }),
               ),
             ),
-          ),
-        ],
+          ];
+
+          for (int day = 0; day < 7; day++) {
+            rowChildren.add(SizedBox(width: gap));
+            rowChildren.add(
+              SizedBox(
+                width: dayWidth,
+                child: _DayColumn(
+                  slotCount: rowCount,
+                  groups: groupedByDay[day] ?? <_CourseGroup>[],
+                  slotHeight: theme.slotHeight,
+                  rowSpacing: theme.rowSpacing,
+                  theme: theme,
+                  onCourseTap: _handleCourseTap,
+                ),
+              ),
+            );
+          }
+
+          return SizedBox(
+            height: totalHeight,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: rowChildren,
+            ),
+          );
+        },
       ),
     );
   }
@@ -476,40 +691,6 @@ class _ColorTimetableState extends State<ColorTimetable> {
   String _courseTimeLabel(TimetableCourse course) {
     final String weekdayLabel = widget.weekdayLabels[(course.weekday - 1).clamp(0, 6)];
     return '星期$weekdayLabel 第${course.startPeriod}-${course.endPeriod}节';
-  }
-
-  Widget _buildReturnButton(double screenHeight) {
-    final bool show = widget.showReturnToCurrentWeekButton && _currentWeekIndex != _originalWeekIndex;
-    return AnimatedPositioned(
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
-      top: screenHeight * 0.4,
-      right: show ? 12 : -180,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: const BorderRadius.horizontal(left: Radius.circular(32)),
-          onTap: () => _changeWeek(_originalWeekIndex),
-          child: Ink(
-            height: 48,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            decoration: BoxDecoration(
-              color: widget.theme.accentColor,
-              borderRadius: const BorderRadius.horizontal(left: Radius.circular(32)),
-            ),
-            child: Center(
-              child: Text(
-                widget.returnToCurrentWeekLabel,
-                style: TextStyle(
-                  color: widget.theme.returnButtonTextColor,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   void _changeWeek(int index) {
@@ -601,12 +782,19 @@ class _SlotBackgroundPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = theme.gridLineColor.withOpacity(0.18);
+    final fill = Paint()
+      ..color = theme.gridLineColor.withValues(alpha: 0.04)
+      ..style = PaintingStyle.fill;
+    final stroke = Paint()
+      ..color = theme.gridLineColor.withValues(alpha: 0.35)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.6;
     for (int i = 0; i < slotCount; i++) {
       final double top = i * (slotHeight + rowSpacing);
       final Rect rect = Rect.fromLTWH(0, top, size.width, slotHeight);
-      final RRect rrect = RRect.fromRectAndRadius(rect, const Radius.circular(16));
-      canvas.drawRRect(rrect, paint);
+      final RRect rrect = RRect.fromRectAndRadius(rect, const Radius.circular(18));
+      canvas.drawRRect(rrect, fill);
+      canvas.drawRRect(rrect.deflate(0.3), stroke);
     }
   }
 
@@ -647,8 +835,8 @@ class _CourseCard extends StatelessWidget {
 
     return Positioned(
       top: top,
-      left: 0,
-      right: 0,
+      left: 4,
+      right: 4,
       height: height,
       child: Stack(
         children: [
@@ -661,11 +849,12 @@ class _CourseCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: group.color,
                   borderRadius: theme.cardRadius,
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.5), width: 1.8),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.15),
+                      color: Colors.black.withValues(alpha: 0.08),
                       blurRadius: theme.cardElevation,
-                      offset: const Offset(0, 10),
+                      offset: const Offset(0, 6),
                     ),
                   ],
                 ),
@@ -681,20 +870,14 @@ class _CourseCard extends StatelessWidget {
                       style: theme.courseTitleStyle,
                     ),
                     const SizedBox(height: 4),
-                    if ((course.teacher ?? '').isNotEmpty)
-                      _CourseMetaRow(
-                        icon: Icons.person_outline,
-                        text: course.teacher!,
-                        style: theme.courseMetaStyle,
-                      ),
                     if ((course.location ?? '').isNotEmpty)
-                      _CourseMetaRow(
+                      _CourseMetaItem(
                         icon: Icons.location_on_outlined,
                         text: course.location!,
                         style: theme.courseMetaStyle,
                       ),
                     if ((course.description ?? '').isNotEmpty)
-                      _CourseMetaRow(
+                      _CourseMetaItem(
                         icon: Icons.info_outline,
                         text: course.description!,
                         style: theme.courseMetaStyle,
@@ -723,8 +906,8 @@ class _CourseCard extends StatelessWidget {
   }
 }
 
-class _CourseMetaRow extends StatelessWidget {
-  const _CourseMetaRow({required this.icon, required this.text, required this.style});
+class _CourseMetaItem extends StatelessWidget {
+  const _CourseMetaItem({required this.icon, required this.text, required this.style});
 
   final IconData icon;
   final String text;
@@ -734,19 +917,17 @@ class _CourseMetaRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 12, color: style.color),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: style,
-            ),
+          const SizedBox(height: 2),
+          Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: style,
+            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -784,7 +965,7 @@ class _CourseSheet extends StatelessWidget {
             width: 46,
             height: 4,
             decoration: BoxDecoration(
-              color: theme.secondaryTextColor.withOpacity(0.3),
+              color: theme.secondaryTextColor.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(999),
             ),
           ),
@@ -811,7 +992,7 @@ class _CourseSheet extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: theme.backgroundColor,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: courseColor.withOpacity(0.3), width: 1.2),
+                  border: Border.all(color: courseColor.withValues(alpha: 0.3), width: 1.2),
                 ),
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -842,7 +1023,7 @@ class _CourseSheet extends StatelessWidget {
                 ),
               ),
             );
-          }).toList(),
+          }),
           const SizedBox(height: 16),
           SafeArea(
             top: false,
@@ -895,6 +1076,29 @@ class _SheetMetaRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _TopBarIconButton extends StatelessWidget {
+  const _TopBarIconButton({required this.icon, required this.color, this.onTap});
+
+  final IconData icon;
+  final Color color;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Icon(icon, color: color, size: 20),
+        ),
       ),
     );
   }
