@@ -53,13 +53,14 @@ MaterialApp(
 ## API 概览
 
 - `TimetableCourse`：课程模型，`title/teacher/location/weekday/startPeriod/duration/weeks/color`，`endPeriod/occursOnWeek`
-- `ColorTimetableTheme`：主题配置，`light/dark` 构造与调色板选择
+- `ColorTimetableTheme`：主题配置，`light/dark` 构造与调色板选择；新增 `inactiveCourseColor/conflictBarColor`
+- `TimetableSchedule` 与 `PeriodLabel`：注入一天节次与时间标签，`densityBucketCount` 控制周密度缩略图桶数
 - `TimetableController`：可选控制器，`currentWeekIndex/zoom` 与 `setWeekIndex/setZoom`
 - `ColorTimetable`：主组件
-  - `courses`、`startOfTerm`、`initialWeekIndex`、`referenceDate`
-  - `showWeekSelector`、`showBuiltinCourseSheet`
-  - `theme`、`controller`
-  - 回调：`onCourseTap(TimetableCourseTapDetails)`、`onCreateCourse`、`onPaletteTap`
+  - 必填：`courses/startOfTerm/initialWeekIndex/referenceDate`
+  - 配置：`showWeekSelector/showBuiltinCourseSheet/showGridLines/showNonCurrentWeekCourses`
+  - 样式与行为：`theme/controller/schedule`
+  - 回调：`onCourseTap(TimetableCourseTapDetails)`、`onCreateCourse`、`onPaletteTap`、`onWeekChanged`
 
 ## 示例与文档
 
@@ -73,3 +74,15 @@ MaterialApp(
 ## 兼容性
 
 - 支持 Flutter 最新稳定版，兼容 Android/iOS/Web
+
+## 性能与扩展
+
+- 性能优化
+  - 课程块使用 `RepaintBoundary` 隔离重绘
+  - 课程颜色分配缓存（按标题稳定配色）
+  - 周密度计算缓存（按周与日程配置缓存，变更时自动失效）
+  - Builder 与 ListView.builder 避免一次性构建过多元素
+- 扩展性
+  - 可插拔：`schedule`/`theme`/回调均可替换自定义逻辑
+  - 自定义样式：通过 `ColorTimetableTheme.copyWith` 或构造传入自定义颜色
+  - 文档与示例：详见 README 与 `example/` 示例工程

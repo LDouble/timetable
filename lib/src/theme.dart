@@ -8,6 +8,8 @@ class ColorTimetableTheme {
   final Color selectedBorderColor;
   final Color weekHighlightColor;
   final int paletteIndex;
+  final Color inactiveCourseColor;
+  final Color conflictBarColor;
 
   const ColorTimetableTheme({
     this.backgroundColor = const Color(0xFFFFFFFF),
@@ -18,6 +20,8 @@ class ColorTimetableTheme {
     this.selectedBorderColor = const Color(0xFF42A5F5),
     this.weekHighlightColor = const Color(0xFF90CAF9),
     this.paletteIndex = 0,
+    this.inactiveCourseColor = const Color(0xFFB0B0B0),
+    this.conflictBarColor = const Color(0xFFFFFFFF),
   });
 
   const ColorTimetableTheme.dark()
@@ -28,7 +32,9 @@ class ColorTimetableTheme {
         courseTextColor = const Color(0xFFFFFFFF),
         selectedBorderColor = const Color(0xFF42A5F5),
         weekHighlightColor = const Color(0xFF1E88E5),
-        paletteIndex = 1;
+        paletteIndex = 1,
+        inactiveCourseColor = const Color(0xFF6B7280),
+        conflictBarColor = const Color(0xFFFFFFFF);
 }
 
 const List<List<Color>> _palette = [

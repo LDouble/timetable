@@ -19,6 +19,7 @@ class ColorTimetable extends StatefulWidget {
   final TimetableController? controller;
   final TimetableSchedule? schedule;
   final CourseTap? onCourseTap;
+  final void Function(int weekday, int startPeriod)? onAddCourseAtSlot;
   final VoidCallback? onCreateCourse;
   final VoidCallback? onPaletteTap;
   final ValueChanged<int>? onWeekChanged;
@@ -38,6 +39,7 @@ class ColorTimetable extends StatefulWidget {
     this.controller,
     this.schedule,
     this.onCourseTap,
+    this.onAddCourseAtSlot,
     this.onCreateCourse,
     this.onPaletteTap,
     this.onWeekChanged,
@@ -61,6 +63,14 @@ class _ColorTimetableState extends State<ColorTimetable> {
   String _sheetTimeLabel = '';
   late List<TimetableCourse> _courses;
   late TimetableSchedule _schedule;
+  bool _addVisible = false;
+  int _addWeekday = 1;
+  int _addStartPeriod = 1;
+  final TextEditingController _addTitleCtrl = TextEditingController();
+  final TextEditingController _addLocationCtrl = TextEditingController();
+  final TextEditingController _addTeacherCtrl = TextEditingController();
+  int _addDuration = 1;
+  bool _addForCurrentWeekOnly = true;
 
   @override
   void initState() {
@@ -138,16 +148,24 @@ class _ColorTimetableState extends State<ColorTimetable> {
               children: [
                 Container(
                   color: bg,
-                  child: _TimetableGrid(
-                    courses: courses,
-                    allocator: _allocator,
-                    gridLineColor: _theme.gridLineColor,
-                    labelColor: _theme.labelColor,
-                    courseTextColor: _theme.courseTextColor,
-                    showGridLines: widget.showGridLines,
-                    schedule: _schedule,
-                    currentWeek: week,
+                    child: _TimetableGrid(
+                      courses: courses,
+                      allocator: _allocator,
+                      gridLineColor: _theme.gridLineColor,
+                      labelColor: _theme.labelColor,
+                      courseTextColor: _theme.courseTextColor,
+                      showGridLines: widget.showGridLines,
+                      schedule: _schedule,
+                      currentWeek: week,
                     showInactiveGrey: widget.showNonCurrentWeekCourses,
+                    theme: _theme,
+                    onLongPressSlot: (w, p) {
+                      if (widget.onAddCourseAtSlot != null) {
+                        widget.onAddCourseAtSlot!(w, p);
+                      } else {
+                        _openAddCourseSheet(w, p);
+                      }
+                    },
                     onTap: (course) {
                       if (widget.showBuiltinCourseSheet) {
                         _showCourseSheet(course, week, courses);
@@ -192,6 +210,44 @@ class _ColorTimetableState extends State<ColorTimetable> {
                             widget.onCourseTap?.call(TimetableCourseTapDetails(course, week));
                           },
                         ),
+                      ),
+                    ),
+                  ),
+                ],
+                if (_addVisible) ...[
+                  IgnorePointer(
+                    ignoring: false,
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 200),
+                      opacity: _addVisible ? 1.0 : 0.0,
+                      child: Align(
+                        alignment: Alignment.center,
+                        child: _AddCourseSheet(
+                          theme: _theme,
+                          schedule: _schedule,
+                          weekday: _addWeekday,
+                          startPeriod: _addStartPeriod,
+                          titleCtrl: _addTitleCtrl,
+                          locationCtrl: _addLocationCtrl,
+                          teacherCtrl: _addTeacherCtrl,
+                          duration: _addDuration,
+                          forCurrentWeekOnly: _addForCurrentWeekOnly,
+                          onDurationChanged: (d) { setState(() => _addDuration = d); },
+                          onForCurrentWeekOnlyChanged: (v) { setState(() => _addForCurrentWeekOnly = v); },
+                          onCancel: _closeAddCourseSheet,
+                          onSave: _saveNewCourse,
+                        ),
+                      ),
+                    ),
+                  ),
+                  IgnorePointer(
+                    ignoring: false,
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 200),
+                      opacity: _addVisible ? 1.0 : 0.0,
+                      child: GestureDetector(
+                        onTap: _closeAddCourseSheet,
+                        child: Container(color: Colors.black45),
                       ),
                     ),
                   ),
@@ -417,6 +473,135 @@ class _ColorTimetableState extends State<ColorTimetable> {
         ? a.weekday - b.weekday
         : a.startPeriod - b.startPeriod);
   }
+
+  void _openAddCourseSheet(int weekday, int startPeriod) {
+    setState(() {
+      _addWeekday = weekday;
+      _addStartPeriod = startPeriod;
+      _addDuration = 1;
+      _addTitleCtrl.text = '';
+      _addLocationCtrl.text = '';
+      _addTeacherCtrl.text = '';
+      _addForCurrentWeekOnly = true;
+      _addVisible = true;
+    });
+  }
+
+  void _closeAddCourseSheet() {
+    setState(() {
+      _addVisible = false;
+    });
+  }
+
+  void _saveNewCourse() {
+    final String title = _addTitleCtrl.text.trim();
+    if (title.isEmpty) return;
+    final TimetableCourse course = TimetableCourse(
+      title: title,
+      teacher: _addTeacherCtrl.text.trim().isEmpty ? null : _addTeacherCtrl.text.trim(),
+      location: _addLocationCtrl.text.trim().isEmpty ? null : _addLocationCtrl.text.trim(),
+      weekday: _addWeekday,
+      startPeriod: _addStartPeriod,
+      duration: _addDuration,
+      weeks: _addForCurrentWeekOnly ? [(_controller.currentWeekIndex + 1)] : List<int>.generate(25, (i) => i + 1),
+    );
+    setState(() {
+      _courses.add(course);
+      _sortCourses();
+      _addVisible = false;
+      _addTitleCtrl.clear();
+      _addLocationCtrl.clear();
+      _addTeacherCtrl.clear();
+    });
+  }
+}
+
+class _AddCourseSheet extends StatelessWidget {
+  final ColorTimetableTheme theme;
+  final TimetableSchedule schedule;
+  final int weekday;
+  final int startPeriod;
+  final TextEditingController titleCtrl;
+  final TextEditingController locationCtrl;
+  final TextEditingController teacherCtrl;
+  final int duration;
+  final bool forCurrentWeekOnly;
+  final ValueChanged<int> onDurationChanged;
+  final ValueChanged<bool> onForCurrentWeekOnlyChanged;
+  final VoidCallback onCancel;
+  final VoidCallback onSave;
+
+  const _AddCourseSheet({
+    required this.theme,
+    required this.schedule,
+    required this.weekday,
+    required this.startPeriod,
+    required this.titleCtrl,
+    required this.locationCtrl,
+    required this.teacherCtrl,
+    required this.duration,
+    required this.forCurrentWeekOnly,
+    required this.onDurationChanged,
+    required this.onForCurrentWeekOnlyChanged,
+    required this.onCancel,
+    required this.onSave,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final int maxDuration = (schedule.periodCount - startPeriod + 1).clamp(1, schedule.periodCount);
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: theme.backgroundColor,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('添加课程', textAlign: TextAlign.center, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 12),
+            TextField(controller: titleCtrl, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: '课程名称')),
+            const SizedBox(height: 8),
+            TextField(controller: locationCtrl, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: '上课地点')),
+            const SizedBox(height: 8),
+            TextField(controller: teacherCtrl, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: '教师')),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(child: Text('星期$weekday 第$startPeriod 节', style: const TextStyle(fontSize: 14))),
+                const SizedBox(width: 12),
+                DropdownButton<int>(
+                  value: duration,
+                  items: List<DropdownMenuItem<int>>.generate(maxDuration, (i) => DropdownMenuItem<int>(value: i + 1, child: Text('持续${i + 1}节'))),
+                  onChanged: (v) { if (v != null) onDurationChanged(v); },
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(child: const Text('仅当前周')),
+                Switch(value: forCurrentWeekOnly, onChanged: onForCurrentWeekOnlyChanged),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(child: TextButton(onPressed: onCancel, child: const Text('取消'))),
+                const SizedBox(width: 8),
+                Expanded(child: ElevatedButton(onPressed: onSave, child: const Text('保存'))),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _CourseActionSheet extends StatelessWidget {
@@ -533,6 +718,8 @@ class _TimetableGrid extends StatelessWidget {
   final TimetableSchedule schedule;
   final int currentWeek;
   final bool showInactiveGrey;
+  final ColorTimetableTheme theme;
+  final void Function(int weekday, int startPeriod)? onLongPressSlot;
 
   const _TimetableGrid({
     required this.courses,
@@ -544,6 +731,8 @@ class _TimetableGrid extends StatelessWidget {
     required this.schedule,
     required this.currentWeek,
     required this.showInactiveGrey,
+    required this.theme,
+    this.onLongPressSlot,
     this.onTap,
   });
 
@@ -557,7 +746,19 @@ class _TimetableGrid extends StatelessWidget {
         final columnWidth = (width - timeColWidth) / 7;
         final rowCount = schedule.periodCount;
         final rowHeight = height / rowCount;
-        return Stack(
+        return GestureDetector(
+          onLongPressStart: (details) {
+            if (onLongPressSlot == null) return;
+            final box = context.findRenderObject() as RenderBox?;
+            if (box == null) return;
+            final local = box.globalToLocal(details.globalPosition);
+            if (local.dx <= timeColWidth) return;
+            final int col = ((local.dx - timeColWidth) / columnWidth).floor() + 1;
+            final int row = (local.dy / rowHeight).floor() + 1;
+            if (col < 1 || col > 7 || row < 1 || row > rowCount) return;
+            onLongPressSlot!(col, row);
+          },
+          child: Stack(
           children: [
             if (showGridLines)
               for (int r = 0; r <= rowCount; r++)
@@ -620,7 +821,9 @@ class _TimetableGrid extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: active
                           ? (course.color ?? allocator.colorForTitle(course.title))
-                          : (showInactiveGrey ? const Color(0xFFB0B0B0) : (course.color ?? allocator.colorForTitle(course.title))),
+                          : (showInactiveGrey
+                              ? theme.inactiveCourseColor
+                              : (course.color ?? allocator.colorForTitle(course.title))),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: Colors.white.withOpacity(0.5), width: 2),
                     ),
@@ -652,7 +855,7 @@ class _TimetableGrid extends StatelessWidget {
                             child: Container(
                               height: 4,
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.8),
+                                color: theme.conflictBarColor.withOpacity(0.8),
                                 borderRadius: BorderRadius.circular(2),
                               ),
                             ),
@@ -664,6 +867,7 @@ class _TimetableGrid extends StatelessWidget {
               );
             }),
           ],
+        ),
         );
       },
     );
