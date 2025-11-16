@@ -1,3 +1,7 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter/foundation.dart';
 
 class TimetableController extends ChangeNotifier {
@@ -22,5 +26,17 @@ class TimetableController extends ChangeNotifier {
     if (next == _zoom) return;
     _zoom = next.toDouble();
     notifyListeners();
+  }
+}
+
+class TimetableCaptureController {
+  final GlobalKey repaintKey = GlobalKey();
+
+  Future<Uint8List?> capturePng({double pixelRatio = 3.0}) async {
+    final boundary = repaintKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+    if (boundary == null) return null;
+    final ui.Image image = await boundary.toImage(pixelRatio: pixelRatio);
+    final ByteData? bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    return bytes?.buffer.asUint8List();
   }
 }

@@ -49,7 +49,7 @@ class _DemoHomePageState extends State<DemoHomePage> {
 
   List<TimetableCourse> get _sampleCourses => <TimetableCourse>[
         TimetableCourse(
-          title: '计算机网络',
+          title: '计算机网络计算机网络计算机网络计算机网络',
           teacher: '王老师',
           location: '理科楼 A201',
           weekday: 1,

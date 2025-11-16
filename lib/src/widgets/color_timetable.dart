@@ -18,6 +18,7 @@ class ColorTimetable extends StatefulWidget {
   final ColorTimetableTheme? theme;
   final TimetableController? controller;
   final TimetableSchedule? schedule;
+  final TimetableCaptureController? captureController;
   final CourseTap? onCourseTap;
   final void Function(int weekday, int startPeriod)? onAddCourseAtSlot;
   final VoidCallback? onCreateCourse;
@@ -38,6 +39,7 @@ class ColorTimetable extends StatefulWidget {
     this.theme,
     this.controller,
     this.schedule,
+    this.captureController,
     this.onCourseTap,
     this.onAddCourseAtSlot,
     this.onCreateCourse,
@@ -124,30 +126,28 @@ class _ColorTimetableState extends State<ColorTimetable> {
         if (widget.showWeekSelector) _buildWeekSelector(),
         _buildHeader(),
         Expanded(
-          child: GestureDetector(
-            onHorizontalDragStart: (_) {
-              _dragDx = 0;
-            },
-            onHorizontalDragUpdate: (details) {
-              _dragDx += details.delta.dx;
-            },
-            onHorizontalDragEnd: (_) {
-              var idx = _controller.currentWeekIndex;
-              if (_dragDx > 50) {
-                if (idx > 0) idx--;
-              } else if (_dragDx < -50) {
-                if (idx < _weekCount - 1) idx++;
-              }
-              if (idx != _controller.currentWeekIndex) {
-                setState(() => _controller.setWeekIndex(idx));
-                widget.onWeekChanged?.call(idx);
-              }
-              _dragDx = 0;
-            },
-            child: Stack(
-              children: [
-                Container(
-                  color: bg,
+          child: RepaintBoundary(
+            key: widget.captureController?.repaintKey,
+            child: GestureDetector(
+              onHorizontalDragStart: (_) { _dragDx = 0; },
+              onHorizontalDragUpdate: (details) { _dragDx += details.delta.dx; },
+              onHorizontalDragEnd: (_) {
+                var idx = _controller.currentWeekIndex;
+                if (_dragDx > 50) {
+                  if (idx > 0) idx--;
+                } else if (_dragDx < -50) {
+                  if (idx < _weekCount - 1) idx++;
+                }
+                if (idx != _controller.currentWeekIndex) {
+                  setState(() => _controller.setWeekIndex(idx));
+                  widget.onWeekChanged?.call(idx);
+                }
+                _dragDx = 0;
+              },
+              child: Stack(
+                children: [
+                  Container(
+                    color: bg,
                     child: _TimetableGrid(
                       courses: courses,
                       allocator: _allocator,
@@ -157,127 +157,106 @@ class _ColorTimetableState extends State<ColorTimetable> {
                       showGridLines: widget.showGridLines,
                       schedule: _schedule,
                       currentWeek: week,
-                    showInactiveGrey: widget.showNonCurrentWeekCourses,
-                    theme: _theme,
-                    onLongPressSlot: (w, p) {
-                      if (widget.onAddCourseAtSlot != null) {
-                        widget.onAddCourseAtSlot!(w, p);
-                      } else {
-                        _openAddCourseSheet(w, p);
-                      }
-                    },
-                    onTap: (course) {
-                      if (widget.showBuiltinCourseSheet) {
-                        _showCourseSheet(course, week, courses);
-                      } else {
-                        widget.onCourseTap?.call(TimetableCourseTapDetails(course, week));
-                      }
-                    },
+                      showInactiveGrey: widget.showNonCurrentWeekCourses,
+                      theme: _theme,
+                      onLongPressSlot: (w, p) {
+                        if (widget.onAddCourseAtSlot != null) {
+                          widget.onAddCourseAtSlot!(w, p);
+                        } else {
+                          _openAddCourseSheet(w, p);
+                        }
+                      },
+                      onTap: (course) {
+                        if (widget.showBuiltinCourseSheet) {
+                          _showCourseSheet(course, week, courses);
+                        } else {
+                          widget.onCourseTap?.call(TimetableCourseTapDetails(course, week));
+                        }
+                      },
+                    ),
                   ),
-                ),
-                // Built-in Course Action Sheet overlay & sheet
-                if (widget.showBuiltinCourseSheet) ...[
-                  IgnorePointer(
-                    ignoring: !_sheetVisible,
-                    child: AnimatedOpacity(
-                      duration: const Duration(milliseconds: 200),
-                      opacity: _sheetVisible ? 1.0 : 0.0,
-                      child: GestureDetector(
-                        onTap: _closeSheet,
-                        child: Container(
-                          color: Colors.black.withOpacity(0.5),
+                  if (widget.showBuiltinCourseSheet) ...[
+                    IgnorePointer(
+                      ignoring: !_sheetVisible,
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 200),
+                        opacity: _sheetVisible ? 1.0 : 0.0,
+                        child: GestureDetector(
+                          onTap: _closeSheet,
+                          child: Container(color: Colors.black.withOpacity(0.5)),
                         ),
                       ),
                     ),
-                  ),
-                  IgnorePointer(
-                    ignoring: !_sheetVisible,
-                    child: AnimatedOpacity(
-                      duration: const Duration(milliseconds: 200),
-                      opacity: _sheetVisible ? 1.0 : 0.0,
-                      child: Align(
-                        alignment: Alignment.center,
-                        child: _CourseActionSheet(
-                          theme: _theme,
-                          allocator: _allocator,
-                          timeLabel: _sheetTimeLabel,
-                          courseList: _sheetConflicts,
-                          onClose: _closeSheet,
-                          onPromote: (course) {
-                        _promoteCourse(course);
-                      },
-                          onOpenDetail: (course) {
-                            widget.onCourseTap?.call(TimetableCourseTapDetails(course, week));
-                          },
+                    IgnorePointer(
+                      ignoring: !_sheetVisible,
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 200),
+                        opacity: _sheetVisible ? 1.0 : 0.0,
+                        child: Align(
+                          alignment: Alignment.center,
+                          child: _CourseActionSheet(
+                            theme: _theme,
+                            allocator: _allocator,
+                            timeLabel: _sheetTimeLabel,
+                            courseList: _sheetConflicts,
+                            onClose: _closeSheet,
+                            onPromote: (course) { _promoteCourse(course); },
+                            onOpenDetail: (course) {
+                              widget.onCourseTap?.call(TimetableCourseTapDetails(course, week));
+                            },
+                          ),
                         ),
+                      ),
+                    ),
+                  ],
+                  if (_addVisible) ...[
+                    Align(
+                      alignment: Alignment.center,
+                      child: _AddCourseSheet(
+                        theme: _theme,
+                        schedule: _schedule,
+                        weekday: _addWeekday,
+                        startPeriod: _addStartPeriod,
+                        titleCtrl: _addTitleCtrl,
+                        locationCtrl: _addLocationCtrl,
+                        teacherCtrl: _addTeacherCtrl,
+                        duration: _addDuration,
+                        forCurrentWeekOnly: _addForCurrentWeekOnly,
+                        onDurationChanged: (d) { setState(() => _addDuration = d); },
+                        onForCurrentWeekOnlyChanged: (v) { setState(() => _addForCurrentWeekOnly = v); },
+                        onCancel: _closeAddCourseSheet,
+                        onSave: _saveNewCourse,
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: _closeAddCourseSheet,
+                      child: Container(color: Colors.black45),
+                    ),
+                  ],
+                  Positioned(
+                    right: _controller.currentWeekIndex != _originalWeekIndex ? 0 : -200,
+                    top: MediaQuery.of(context).size.height * 0.4,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF42A5F5),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(999),
+                          bottomLeft: Radius.circular(999),
+                        ),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() => _controller.setWeekIndex(_originalWeekIndex));
+                          widget.onWeekChanged?.call(_originalWeekIndex);
+                        },
+                        child: const Text('返回本周', style: TextStyle(color: Colors.white, fontSize: 14)),
                       ),
                     ),
                   ),
                 ],
-                if (_addVisible) ...[
-                  IgnorePointer(
-                    ignoring: false,
-                    child: AnimatedOpacity(
-                      duration: const Duration(milliseconds: 200),
-                      opacity: _addVisible ? 1.0 : 0.0,
-                      child: Align(
-                        alignment: Alignment.center,
-                        child: _AddCourseSheet(
-                          theme: _theme,
-                          schedule: _schedule,
-                          weekday: _addWeekday,
-                          startPeriod: _addStartPeriod,
-                          titleCtrl: _addTitleCtrl,
-                          locationCtrl: _addLocationCtrl,
-                          teacherCtrl: _addTeacherCtrl,
-                          duration: _addDuration,
-                          forCurrentWeekOnly: _addForCurrentWeekOnly,
-                          onDurationChanged: (d) { setState(() => _addDuration = d); },
-                          onForCurrentWeekOnlyChanged: (v) { setState(() => _addForCurrentWeekOnly = v); },
-                          onCancel: _closeAddCourseSheet,
-                          onSave: _saveNewCourse,
-                        ),
-                      ),
-                    ),
-                  ),
-                  IgnorePointer(
-                    ignoring: false,
-                    child: AnimatedOpacity(
-                      duration: const Duration(milliseconds: 200),
-                      opacity: _addVisible ? 1.0 : 0.0,
-                      child: GestureDetector(
-                        onTap: _closeAddCourseSheet,
-                        child: Container(color: Colors.black45),
-                      ),
-                    ),
-                  ),
-                ],
-                Positioned(
-                  right: _controller.currentWeekIndex != _originalWeekIndex ? 0 : -200,
-                  top: MediaQuery.of(context).size.height * 0.4,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 300),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF42A5F5),
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(999),
-                        bottomLeft: Radius.circular(999),
-                      ),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                    child: GestureDetector(
-                      onTap: () {
-                        setState(() => _controller.setWeekIndex(_originalWeekIndex));
-                        widget.onWeekChanged?.call(_originalWeekIndex);
-                      },
-                      child: const Text(
-                        '返回本周',
-                        style: TextStyle(color: Colors.white, fontSize: 14),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -833,12 +812,18 @@ class _TimetableGrid extends StatelessWidget {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
-                              Text(course.title,
+                                Text(
+                                  course.title,
                                   textAlign: TextAlign.center,
+                                  softWrap: true,
+                                  maxLines: 4,
+                                  overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                      color: Colors.white.withOpacity(active ? 1.0 : 0.9),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600)),
+                                    color: Colors.white.withOpacity(active ? 1.0 : 0.9),
+                                    fontSize: 11,
+                                    height: 1.25,
+                                  ),
+                                ),
                               if (course.location != null)
                                 Text(course.location!,
                                     textAlign: TextAlign.center,

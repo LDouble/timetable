@@ -59,7 +59,7 @@ MaterialApp(
 - `ColorTimetable`：主组件
   - 必填：`courses/startOfTerm/initialWeekIndex/referenceDate`
   - 配置：`showWeekSelector/showBuiltinCourseSheet/showGridLines/showNonCurrentWeekCourses`
-  - 样式与行为：`theme/controller/schedule`
+  - 样式与行为：`theme/controller/schedule/captureController`
   - 回调：`onCourseTap(TimetableCourseTapDetails)`、`onCreateCourse`、`onPaletteTap`、`onWeekChanged`
 
 ## 示例与文档
@@ -86,3 +86,9 @@ MaterialApp(
   - 可插拔：`schedule`/`theme`/回调均可替换自定义逻辑
   - 自定义样式：通过 `ColorTimetableTheme.copyWith` 或构造传入自定义颜色
   - 文档与示例：详见 README 与 `example/` 示例工程
+## 导出图片
+
+- 通过传入 `TimetableCaptureController` 实现导出：
+  - 初始化：`final cap = TimetableCaptureController();`
+  - 传入：`ColorTimetable(captureController: cap, ...)`
+  - 导出：`final bytes = await cap.capturePng(pixelRatio: 3.0);`（得到 `Uint8List` PNG，可保存或分享）
